@@ -1,0 +1,13 @@
+[Unit]
+Description=MCP Agent (docker compose)
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/mcp
+ExecStart=/usr/local/bin/docker-compose up -d
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target

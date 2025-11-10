@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+runs/
+dist/
+*.egg-info/
+.DS_Store
+# Docker
+*.log
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+temp.txt
