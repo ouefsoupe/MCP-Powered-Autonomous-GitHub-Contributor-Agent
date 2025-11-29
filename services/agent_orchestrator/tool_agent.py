@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 
@@ -9,6 +10,23 @@ from .mcp_client import MCPClient
 
 # Anthropic client (Claude)
 from anthropic import Anthropic
+
+# Import the secrets helper - add parent directory to path
+_parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+if _parent_dir not in sys.path:
+    sys.path.insert(0, _parent_dir)
+
+try:
+    from adapters.secrets import get_secret
+except ImportError:
+    # Fallback if import fails (for testing or different deployment scenarios)
+    def get_secret(identifier: str, *, from_aws: bool = False) -> str:
+        if not from_aws:
+            val = os.getenv(identifier)
+            if not val:
+                raise RuntimeError(f"Secret {identifier} not found in environment")
+            return val
+        raise RuntimeError("AWS Secrets Manager not available")
 
 # If you’re using OpenAI:
 # import openai
@@ -47,9 +65,24 @@ class ToolCallingAgent:
         self.model = model or os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20240620")
         self.max_steps = max_steps
 
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+        # Get Anthropic API key from Secrets Manager or environment variable
+        api_key = None
+        api_key_arn = os.getenv("SECRETS_MANAGER_ANTHROPIC_API_KEY_ARN")
+        if api_key_arn:
+            try:
+                api_key = get_secret(api_key_arn, from_aws=True)
+                print("[DEBUG] Retrieved Anthropic API key from Secrets Manager")
+            except Exception as e:
+                print(f"[WARNING] Failed to retrieve Anthropic API key from Secrets Manager: {e}")
+
         if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY is not set in the environment.")
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if api_key:
+                print("[DEBUG] Using Anthropic API key from ANTHROPIC_API_KEY env var")
+
+        if not api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY not found in Secrets Manager or environment variables.")
+
         self.anthropic = Anthropic(api_key=api_key)
 
     # ---------- Public entry point ----------

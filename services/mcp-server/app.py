@@ -88,20 +88,24 @@ def _ensure_allowed_repo(url: str):
     if ALLOWED_REPOS and url not in ALLOWED_REPOS:
         raise HTTPException(status_code=403, detail="Repo not allowlisted " + url,)
 
-def _github_client() -> GitHubClient:
-    # Prefer Secrets Manager if ARN present
+def _get_github_token() -> str:
+    """Get GitHub PAT from Secrets Manager or environment variable."""
     pat_arn = os.getenv("SECRETS_MANAGER_GITHUB_PAT_ARN")
-    token = None
     if pat_arn:
         try:
-            token = get_secret(pat_arn, from_aws=True)
-        except Exception:
-            pass
-    if not token:
-        token = os.getenv("GITHUB_TOKEN")
+            return get_secret(pat_arn, from_aws=True)
+        except Exception as e:
+            print(f"[WARNING] Failed to retrieve GitHub token from Secrets Manager: {e}")
+
+    # Fallback to environment variable
+    token = os.getenv("GITHUB_TOKEN")
     if not token:
         raise HTTPException(status_code=500, detail="GitHub token not configured")
-    return GitHubClient(token)
+    return token
+
+def _github_client() -> GitHubClient:
+    """Get a configured GitHub client."""
+    return GitHubClient(_get_github_token())
 
 # ------------ Endpoints -------------
 @app.get("/health", response_model=Health)
@@ -111,16 +115,7 @@ def health():
 @app.post("/repo/clone", response_model=RepoCloneResp)
 def repo_clone(req: RepoCloneReq):
     _ensure_allowed_repo(req.url)
-    # Get GitHub token for authentication
-    token = None
-    pat_arn = os.getenv("SECRETS_MANAGER_GITHUB_PAT_ARN")
-    if pat_arn:
-        try:
-            token = get_secret(pat_arn, from_aws=True)
-        except Exception:
-            pass
-    if not token:
-        token = os.getenv("GITHUB_TOKEN")
+    token = _get_github_token()
 
     tmpdir = tempfile.mkdtemp(prefix="mcp-")
     branch = clone_repo(req.url, tmpdir, branch=req.branch, token=token)
@@ -154,21 +149,8 @@ def git_create_branch(req: CreateBranchReq):
 
 @app.post("/git/commit_push", response_model=CommitPushResp)
 def git_commit_push(req: CommitPushReq):
-    # Get GitHub token for authentication
-    token = None
-    pat_arn = os.getenv("SECRETS_MANAGER_GITHUB_PAT_ARN")
-    if pat_arn:
-        try:
-            token = get_secret(pat_arn, from_aws=True)
-            print(f"[DEBUG] Retrieved token from Secrets Manager")
-        except Exception as e:
-            print(f"[DEBUG] Failed to retrieve from Secrets Manager: {e}")
-    if not token:
-        token = os.getenv("GITHUB_TOKEN")
-        if token:
-            print(f"[DEBUG] Using token from GITHUB_TOKEN env var (length: {len(token)})")
-        else:
-            print(f"[WARNING] No GitHub token found!")
+    token = _get_github_token()
+    print(f"[DEBUG] Using GitHub token (length: {len(token)})")
 
     sha, ref = commit_and_push(
         req.workdir, req.branch, req.message,
