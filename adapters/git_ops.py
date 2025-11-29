@@ -9,6 +9,10 @@ def _inject_token_into_url(url: str, token: Optional[str]) -> str:
     if not token:
         return url
 
+    # Remove any existing credentials from the URL first
+    # Pattern: https://anything@github.com/... -> https://github.com/...
+    url = re.sub(r'https://[^@]+@github\.com/', 'https://github.com/', url)
+
     # Pattern to match https://github.com/... URLs
     pattern = r'https://github\.com/'
     if re.match(pattern, url):
@@ -65,13 +69,18 @@ def commit_and_push(workdir: str, branch: str, message: str, *, push: bool = Tru
         try:
             # Get the current remote URL
             remote_url = repo.remotes.origin.url
+            print(f"[DEBUG] Original remote URL (sanitized): {remote_url.replace(token, 'TOKEN') if token in remote_url else remote_url}")
+
             # Inject token into the URL
             auth_url = _inject_token_into_url(remote_url, token)
+
             # Update the remote URL
             repo.remotes.origin.set_url(auth_url)
+            print(f"[DEBUG] Updated remote URL with token: {auth_url.replace(token, 'TOKEN')}")
         except Exception as e:
-            # If updating remote fails, continue without token (will likely fail at push)
-            pass
+            # If updating remote fails, log the error
+            print(f"[ERROR] Failed to update remote URL: {e}")
+            raise
 
     repo.git.add(all=True)
     if not repo.is_dirty():

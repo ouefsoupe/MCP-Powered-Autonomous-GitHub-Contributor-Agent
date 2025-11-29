@@ -160,10 +160,15 @@ def git_commit_push(req: CommitPushReq):
     if pat_arn:
         try:
             token = get_secret(pat_arn, from_aws=True)
-        except Exception:
-            pass
+            print(f"[DEBUG] Retrieved token from Secrets Manager")
+        except Exception as e:
+            print(f"[DEBUG] Failed to retrieve from Secrets Manager: {e}")
     if not token:
         token = os.getenv("GITHUB_TOKEN")
+        if token:
+            print(f"[DEBUG] Using token from GITHUB_TOKEN env var (length: {len(token)})")
+        else:
+            print(f"[WARNING] No GitHub token found!")
 
     sha, ref = commit_and_push(
         req.workdir, req.branch, req.message,
