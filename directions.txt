@@ -1,0 +1,35 @@
+ssh -i ec2-mcp.pem ubuntu@98.93.95.242
+
+sudo apt-get update -y
+sudo apt-get upgrade -y
+
+sudo apt-get install -y \
+  git \
+  build-essential \
+  python3 \
+  python3-venv \
+  python3-pip \
+  curl \
+  jq
+
+git clone https://github.com/ouefsoupe/MCP-Powered-Autonomous-GitHub-Contributor-Agent.git
+for now add .env file
+
+python3 -m venv .venv
+
+cd ~/MCP-Powered-Autonomous-GitHub-Contributor-Agent
+source .venv/bin/activate
+export PYTHONPATH=.
+pip install -r requirements.txt
+
+
+make run-local
+
+
+ssh -i ec2-mcp.pem ubuntu@98.93.95.242
+
+cd ~/MCP-Powered-Autonomous-GitHub-Contributor-Agent
+source .venv/bin/activate
+export PYTHONPATH=.
+
+python3 -m services.agent_orchestrator.run_fake_agent

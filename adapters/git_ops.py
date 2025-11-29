@@ -2,9 +2,24 @@ from typing import Optional, Tuple
 from git import Repo
 import os
 import difflib
+import re
 
-def clone_repo(url: str, dest: str, branch: Optional[str] = None) -> str:
-    repo = Repo.clone_from(url, dest)
+def _inject_token_into_url(url: str, token: Optional[str]) -> str:
+    """Inject PAT token into HTTPS GitHub URL for authentication."""
+    if not token:
+        return url
+
+    # Pattern to match https://github.com/... URLs
+    pattern = r'https://github\.com/'
+    if re.match(pattern, url):
+        # Inject token as https://token@github.com/...
+        return re.sub(pattern, f'https://{token}@github.com/', url)
+    return url
+
+def clone_repo(url: str, dest: str, branch: Optional[str] = None, token: Optional[str] = None) -> str:
+    """Clone a repository, optionally injecting a PAT token for authentication."""
+    auth_url = _inject_token_into_url(url, token)
+    repo = Repo.clone_from(auth_url, dest)
     if branch:
         repo.git.checkout(branch)
     return branch or repo.active_branch.name
@@ -32,9 +47,10 @@ def write_file_and_diff(workdir: str, path: str, new_text: str) -> Tuple[str, in
                                         fromfile=f"a/{path}", tofile=f"b/{path}"))
     return diff, abs(len(new_text) - len(old))
 
-def commit_and_push(workdir: str, branch: str, message: str, *, push: bool = True):
+def commit_and_push(workdir: str, branch: str, message: str, *, push: bool = True, token: Optional[str] = None):
+    """Commit changes and optionally push to remote, using PAT token for authentication."""
     repo = Repo(workdir)
-    # ensure identity so local commits don’t fail
+    # ensure identity so local commits don't fail
     cw = repo.config_writer()
     try:
         _ = repo.config_reader().get_value("user", "name")
@@ -43,6 +59,19 @@ def commit_and_push(workdir: str, branch: str, message: str, *, push: bool = Tru
         cw.set_value("user", "name", "mcp-bot")
         cw.set_value("user", "email", "mcp@example.com")
     cw.release()
+
+    # Update remote URL with PAT token if provided
+    if token and push:
+        try:
+            # Get the current remote URL
+            remote_url = repo.remotes.origin.url
+            # Inject token into the URL
+            auth_url = _inject_token_into_url(remote_url, token)
+            # Update the remote URL
+            repo.remotes.origin.set_url(auth_url)
+        except Exception as e:
+            # If updating remote fails, continue without token (will likely fail at push)
+            pass
 
     repo.git.add(all=True)
     if not repo.is_dirty():

@@ -22,7 +22,7 @@ The goal is to demonstrate an automated workflow where a large language model (L
 ### 2. Authentication
 - Git operations are authenticated using an SSH key configured as a **deploy key** or **user key** with write permissions.
 - The server also requires a **GitHub Personal Access Token (PAT)** with `public_repo` or equivalent scope to open pull requests via the GitHub REST API.
-- Both the SSH key and token are stored securely as environment variables within the MCP server environment.
+- Both the SSH key and token are stored securely as environment variables within the MCP server environment. 
 
 ### 3. Large Language Model Integration
 - The **LLM acts as the “coder”** — it determines what changes to make and when to perform git operations.

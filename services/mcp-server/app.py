@@ -111,8 +111,19 @@ def health():
 @app.post("/repo/clone", response_model=RepoCloneResp)
 def repo_clone(req: RepoCloneReq):
     _ensure_allowed_repo(req.url)
+    # Get GitHub token for authentication
+    token = None
+    pat_arn = os.getenv("SECRETS_MANAGER_GITHUB_PAT_ARN")
+    if pat_arn:
+        try:
+            token = get_secret(pat_arn, from_aws=True)
+        except Exception:
+            pass
+    if not token:
+        token = os.getenv("GITHUB_TOKEN")
+
     tmpdir = tempfile.mkdtemp(prefix="mcp-")
-    branch = clone_repo(req.url, tmpdir, branch=req.branch)
+    branch = clone_repo(req.url, tmpdir, branch=req.branch, token=token)
     trace_id = uuid.uuid4().hex
     return RepoCloneResp(workdir=tmpdir, branch=branch, trace_id=trace_id)
 
@@ -143,9 +154,21 @@ def git_create_branch(req: CreateBranchReq):
 
 @app.post("/git/commit_push", response_model=CommitPushResp)
 def git_commit_push(req: CommitPushReq):
+    # Get GitHub token for authentication
+    token = None
+    pat_arn = os.getenv("SECRETS_MANAGER_GITHUB_PAT_ARN")
+    if pat_arn:
+        try:
+            token = get_secret(pat_arn, from_aws=True)
+        except Exception:
+            pass
+    if not token:
+        token = os.getenv("GITHUB_TOKEN")
+
     sha, ref = commit_and_push(
         req.workdir, req.branch, req.message,
-        push=not DRY_RUN
+        push=not DRY_RUN,
+        token=token
     )
     if DRY_RUN:
         ref = f"(dry-run) {ref}"
