@@ -4,13 +4,9 @@ import sys
 from pathlib import Path
 
 # Force project root (…/MCP-Powered-Autonomous-GitHub-Contributor-Agent) onto sys.path
-
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
-
-# print("DEBUG: ROOT =", ROOT)
-# print("DEBUG: sys.path[0] =", sys.path[0])
-# print("DEBUG: looking for:", Path(ROOT, "adapters/secrets.py"))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import os
 import json
@@ -21,51 +17,52 @@ from dotenv import load_dotenv
 
 from adapters.secrets import get_secret
 
-
-# Load .env so we get SECRETS_MANAGER_GITHUB_PAT_ARN, SQS_TICKET_QUEUE_URL, etc.
+# Load .env so we get SECRETS_MANAGER_GITHUB_PAT_ARN, SQS_TICKET_QUEUE_URL, AWS_REGION, etc.
 load_dotenv(override=True)
 
 GITHUB_API = "https://api.github.com"
 
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+
 GITHUB_OWNER = os.getenv("GITHUB_OWNER", "ouefsoupe")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "javaLearning")
-GITHUB_PROJECT_NAME = os.getenv("GITHUB_PROJECT_NAME", "mcp-java-board")
-SQS_TICKET_QUEUE_URL = os.environ["SQS_TICKET_QUEUE_URL"]  # required
 
-# Board → normalized status
-COLUMN_STATUS_MAP = {
-    "Todo": "todo",
-    "To do": "todo",
-    "In Progress": "in_progress",
-    "Dev Complete": "dev_complete",
-    "Done": "done",
+# SQS ticket queue URL (required)
+SQS_TICKET_QUEUE_URL = os.environ["SQS_TICKET_QUEUE_URL"]
+
+# Label → normalized status
+STATUS_LABEL_MAP = {
+    "status: todo": "todo",
+    "status: in-progress": "in_progress",
+    "status: dev-complete": "dev_complete",
+    "status: done": "done",
 }
 
 
 def _get_github_token() -> str:
     """
-    Same logic as in app.py:
     - Prefer Secrets Manager via SECRETS_MANAGER_GITHUB_PAT_ARN
-    - Fallback to GITHUB_TOKEN env if present (e.g. for local dev)
+    - Fallback to GITHUB_TOKEN env for local dev
 
-    Also handles JSON secrets like:
+    Handles JSON secrets like:
       {"GITHUB_TOKEN": "github_pat_..."}
     """
+
     def _extract_token(raw: str) -> str:
         raw = raw.strip()
-        # Try to interpret as JSON first
+        # Try JSON first
         try:
             data = json.loads(raw)
             if isinstance(data, dict):
                 if "GITHUB_TOKEN" in data:
                     return str(data["GITHUB_TOKEN"]).strip()
-                # If it's a single-key dict, just take that value
+                # Single-key dict: just take the value
                 if len(data) == 1:
                     return str(next(iter(data.values()))).strip()
         except json.JSONDecodeError:
-            pass  # Not JSON, fall through
+            pass  # not JSON, fall through
 
-        # Not JSON or couldn't extract — assume raw token
+        # Not JSON or couldn't extract – treat raw as the token
         return raw
 
     pat_arn = os.getenv("SECRETS_MANAGER_GITHUB_PAT_ARN")
@@ -76,7 +73,6 @@ def _get_github_token() -> str:
         except Exception as e:
             print(f"[WARNING] Failed to retrieve GitHub token from Secrets Manager: {e}")
 
-    # Fallback to environment variable
     raw_env = os.getenv("GITHUB_TOKEN")
     if not raw_env:
         raise RuntimeError("GitHub token not configured (no secret ARN and no GITHUB_TOKEN)")
@@ -84,99 +80,69 @@ def _get_github_token() -> str:
     return _extract_token(raw_env)
 
 
-
 GITHUB_TOKEN = _get_github_token()
 
 session = requests.Session()
 session.headers.update(
     {
-        "Authorization": f"Bearer {GITHUB_TOKEN}",
-        # Required for classic Projects API
-        "Accept": "application/vnd.github.inertia+json",
+        # Works for both classic + fine-grained PATs
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
 )
 
-# Get AWS region from environment, default to us-east-1
-AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 sqs = boto3.client("sqs", region_name=AWS_REGION)
 
 
-def get_repo_projects():
-    """Get classic projects (Projects V1) for the repository."""
-    url = f"{GITHUB_API}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/projects"
-    print(f"Fetching classic projects from: {url}")
-    resp = session.get(url)
+def fetch_open_issues():
+    """
+    Fetch open issues for the repo.
+    NOTE: This returns both issues and PRs; we filter PRs out.
+    """
+    issues = []
+    page = 1
 
-    if resp.status_code == 404:
-        print("[ERROR] Classic Projects API returned 404")
-        print("This repository likely uses GitHub Projects V2 (new Projects Beta)")
-        print("Projects V2 requires GraphQL API instead of REST API")
-        print("\nTo check if the repo has Projects V2:")
-        print(f"  Visit: https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/projects")
-        raise RuntimeError(
-            "Classic Projects not found. This repository may be using Projects V2, "
-            "which requires GraphQL API. Please check the GitHub repository."
+    while True:
+        url = f"{GITHUB_API}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/issues"
+        resp = session.get(
+            url,
+            params={"state": "open", "per_page": 100, "page": page},
         )
+        resp.raise_for_status()
+        batch = resp.json()
+        if not batch:
+            break
 
-    resp.raise_for_status()
-    projects = resp.json()
-    print(f"Found {len(projects)} classic projects")
-    return projects
+        issues.extend(batch)
+        page += 1
 
-
-def find_project_by_name(name: str):
-    for p in get_repo_projects():
-        if p["name"] == name:
-            return p
-    raise RuntimeError(f"Project named '{name}' not found on {GITHUB_OWNER}/{GITHUB_REPO}")
+    return issues
 
 
-def get_project_columns(project_id: int):
-    url = f"{GITHUB_API}/projects/{project_id}/columns"
-    resp = session.get(url)
-    resp.raise_for_status()
-    return resp.json()
-
-
-def get_column_cards(column_id: int):
-    url = f"{GITHUB_API}/projects/columns/{column_id}/cards"
-    resp = session.get(url, params={"per_page": 100})
-    resp.raise_for_status()
-    return resp.json()
-
-
-def fetch_issue_from_card(card):
+def infer_status_from_labels(issue) -> str | None:
     """
-    Skip note cards; only process cards linked to issues.
+    Look at an issue's labels and map them to a normalized status.
+    Returns:
+      - "todo", "in_progress", "dev_complete", "done", or
+      - None if no known status label is present.
     """
-    content_url = card.get("content_url")
-    if not content_url:
-        return None
-
-    resp = session.get(content_url)
-    resp.raise_for_status()
-    issue = resp.json()
-
-    # Ignore PRs for now; only issues
-    if "pull_request" in issue:
-        return None
-    return issue
+    labels = [lbl["name"] for lbl in issue.get("labels", [])]
+    for label in labels:
+        normalized = STATUS_LABEL_MAP.get(label)
+        if normalized:
+            return normalized
+    return None
 
 
-def enqueue_issue(issue, project, column_name: str):
-    status = COLUMN_STATUS_MAP.get(column_name)
-    if not status:
-        print(f"  [WARN] Unknown column '{column_name}', skipping issue #{issue['number']}")
-        return
-
+def enqueue_issue(issue, status: str):
+    """
+    Put the issue into the SQS ticket queue with metadata.
+    """
     payload = {
         "source": "github",
         "repo": f"{GITHUB_OWNER}/{GITHUB_REPO}",
         "issue_number": issue["number"],
-        "project_id": project["id"],
-        "project_name": project["name"],
-        "column_name": column_name,
         "status": status,
         "title": issue["title"],
         "body": issue.get("body") or "",
@@ -184,41 +150,63 @@ def enqueue_issue(issue, project, column_name: str):
         "html_url": issue["html_url"],
     }
 
-    print(f"Enqueueing issue #{issue['number']} in '{column_name}' as status '{status}'")
+    print(f"Enqueueing issue #{issue['number']} with status '{status}'")
+
     sqs.send_message(
         QueueUrl=SQS_TICKET_QUEUE_URL,
         MessageBody=json.dumps(payload),
         MessageAttributes={
             "status": {"DataType": "String", "StringValue": status},
-            "repo": {"DataType": "String", "StringValue": f"{GITHUB_OWNER}/{GITHUB_REPO}"},
+            "repo": {
+                "DataType": "String",
+                "StringValue": f"{GITHUB_OWNER}/{GITHUB_REPO}",
+            },
         },
     )
 
 
-def sync_project_to_sqs():
-    project = find_project_by_name(GITHUB_PROJECT_NAME)
-    print(f"Found project {project['name']} (id={project['id']})")
+def sync_issues_to_sqs():
+    """
+    Main sync:
+    - Fetch all open issues
+    - Infer status from labels
+    - Enqueue everything that is NOT 'done'
+    """
+    print(f"Fetching open issues for {GITHUB_OWNER}/{GITHUB_REPO}...")
+    issues = fetch_open_issues()
+    print(f"Found {len(issues)} open items (issues + PRs).")
 
-    columns = get_project_columns(project["id"])
-    print(f"Found {len(columns)} columns")
+    count_enqueued = 0
+    count_skipped_prs = 0
+    count_skipped_no_status = 0
+    count_skipped_done = 0
 
-    for col in columns:
-        col_name = col["name"]
-        print(f"Processing column '{col_name}' (id={col['id']})")
-        cards = get_column_cards(col["id"])
-        print(f"  {len(cards)} cards in this column")
+    for issue in issues:
+        # Skip PRs (they have 'pull_request' field)
+        if "pull_request" in issue:
+            count_skipped_prs += 1
+            continue
 
-        for card in cards:
-            issue = fetch_issue_from_card(card)
-            if not issue:
-                continue
+        status = infer_status_from_labels(issue)
+        if status is None:
+            count_skipped_no_status += 1
+            print(f"  [WARN] Issue #{issue['number']} has no status:* label, skipping")
+            continue
 
-            # Example policy: enqueue everything not in Done
-            if COLUMN_STATUS_MAP.get(col_name) != "done":
-                enqueue_issue(issue, project, col_name)
-            else:
-                print(f"  Skipping issue #{issue['number']} in 'Done'")
+        if status == "done":
+            count_skipped_done += 1
+            print(f"  Skipping issue #{issue['number']} with status 'done'")
+            continue
+
+        enqueue_issue(issue, status)
+        count_enqueued += 1
+
+    print("Sync complete.")
+    print(f"  Enqueued:          {count_enqueued}")
+    print(f"  Skipped PRs:       {count_skipped_prs}")
+    print(f"  Skipped no status: {count_skipped_no_status}")
+    print(f"  Skipped done:      {count_skipped_done}")
 
 
 if __name__ == "__main__":
-    sync_project_to_sqs()
+    sync_issues_to_sqs()
