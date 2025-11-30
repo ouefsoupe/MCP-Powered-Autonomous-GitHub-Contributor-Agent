@@ -47,18 +47,42 @@ def _get_github_token() -> str:
     Same logic as in app.py:
     - Prefer Secrets Manager via SECRETS_MANAGER_GITHUB_PAT_ARN
     - Fallback to GITHUB_TOKEN env if present (e.g. for local dev)
+
+    Also handles JSON secrets like:
+      {"GITHUB_TOKEN": "github_pat_..."}
     """
+    def _extract_token(raw: str) -> str:
+        raw = raw.strip()
+        # Try to interpret as JSON first
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                if "GITHUB_TOKEN" in data:
+                    return str(data["GITHUB_TOKEN"]).strip()
+                # If it's a single-key dict, just take that value
+                if len(data) == 1:
+                    return str(next(iter(data.values()))).strip()
+        except json.JSONDecodeError:
+            pass  # Not JSON, fall through
+
+        # Not JSON or couldn't extract — assume raw token
+        return raw
+
     pat_arn = os.getenv("SECRETS_MANAGER_GITHUB_PAT_ARN")
     if pat_arn:
         try:
-            return get_secret(pat_arn, from_aws=True)
+            raw = get_secret(pat_arn, from_aws=True)
+            return _extract_token(raw)
         except Exception as e:
             print(f"[WARNING] Failed to retrieve GitHub token from Secrets Manager: {e}")
 
-    token = os.getenv("GITHUB_TOKEN")
-    if not token:
+    # Fallback to environment variable
+    raw_env = os.getenv("GITHUB_TOKEN")
+    if not raw_env:
         raise RuntimeError("GitHub token not configured (no secret ARN and no GITHUB_TOKEN)")
-    return token
+
+    return _extract_token(raw_env)
+
 
 
 GITHUB_TOKEN = _get_github_token()
