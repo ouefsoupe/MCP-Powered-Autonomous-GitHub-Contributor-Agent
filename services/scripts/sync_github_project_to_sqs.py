@@ -79,10 +79,26 @@ sqs = boto3.client("sqs", region_name=AWS_REGION)
 
 
 def get_repo_projects():
+    """Get classic projects (Projects V1) for the repository."""
     url = f"{GITHUB_API}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/projects"
+    print(f"Fetching classic projects from: {url}")
     resp = session.get(url)
+
+    if resp.status_code == 404:
+        print("[ERROR] Classic Projects API returned 404")
+        print("This repository likely uses GitHub Projects V2 (new Projects Beta)")
+        print("Projects V2 requires GraphQL API instead of REST API")
+        print("\nTo check if the repo has Projects V2:")
+        print(f"  Visit: https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/projects")
+        raise RuntimeError(
+            "Classic Projects not found. This repository may be using Projects V2, "
+            "which requires GraphQL API. Please check the GitHub repository."
+        )
+
     resp.raise_for_status()
-    return resp.json()
+    projects = resp.json()
+    print(f"Found {len(projects)} classic projects")
+    return projects
 
 
 def find_project_by_name(name: str):
