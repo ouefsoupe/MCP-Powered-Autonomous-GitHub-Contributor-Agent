@@ -33,3 +33,8 @@ source .venv/bin/activate
 export PYTHONPATH=.
 
 python3 -m services.agent_orchestrator.run_fake_agent
+
+
+pip todo:
+adapters
+torch

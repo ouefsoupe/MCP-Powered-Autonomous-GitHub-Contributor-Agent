@@ -1,4 +1,17 @@
 #!/usr/bin/env python3
+
+import sys
+from pathlib import Path
+
+# Force project root (…/MCP-Powered-Autonomous-GitHub-Contributor-Agent) onto sys.path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+# print("DEBUG: ROOT =", ROOT)
+# print("DEBUG: sys.path[0] =", sys.path[0])
+# print("DEBUG: looking for:", Path(ROOT, "adapters/secrets.py"))
+
 import os
 import json
 
@@ -7,6 +20,7 @@ import requests
 from dotenv import load_dotenv
 
 from adapters.secrets import get_secret
+
 
 # Load .env so we get SECRETS_MANAGER_GITHUB_PAT_ARN, SQS_TICKET_QUEUE_URL, etc.
 load_dotenv(override=True)
@@ -59,7 +73,9 @@ session.headers.update(
     }
 )
 
-sqs = boto3.client("sqs")
+# Get AWS region from environment, default to us-east-1
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+sqs = boto3.client("sqs", region_name=AWS_REGION)
 
 
 def get_repo_projects():
