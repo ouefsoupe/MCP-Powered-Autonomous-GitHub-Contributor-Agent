@@ -32,6 +32,7 @@ SQS_TICKET_QUEUE_URL = os.environ["SQS_TICKET_QUEUE_URL"]
 
 # Label → normalized status
 STATUS_LABEL_MAP = {
+    "help wanted": "todo",
     "status: todo": "todo",
     "status: in-progress": "in_progress",
     "status: dev-complete": "dev_complete",
