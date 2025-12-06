@@ -19,6 +19,30 @@ from dotenv import load_dotenv
 from adapters.secrets import get_secret
 from services.agent_orchestrator.tool_agent import ToolCallingAgent, IssueTask
 
+import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+# ---------- Logging setup for agent worker ----------
+
+ROOT = Path(__file__).resolve().parents[2]
+LOG_DIR = ROOT / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+WORKER_LOG_FILE = LOG_DIR / "agent-worker.log"
+
+worker_logger = logging.getLogger("agent_worker")
+worker_logger.setLevel(logging.INFO)
+
+if not worker_logger.handlers:
+    handler = RotatingFileHandler(WORKER_LOG_FILE, maxBytes=5_000_000, backupCount=3)
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    handler.setFormatter(formatter)
+    worker_logger.addHandler(handler)
+
+
 # ----------------------------------------------------
 # Env + AWS clients
 # ----------------------------------------------------
@@ -69,10 +93,10 @@ def _get_anthropic_api_key() -> str:
         try:
             raw = get_secret(arn, from_aws=True)
             key = _extract_key(raw)
-            print("[DEBUG] Retrieved Anthropic API key from Secrets Manager")
+            worker_logger.info("[DEBUG] Retrieved Anthropic API key from Secrets Manager")
             return key
         except Exception as e:
-            print(f"[WARNING] Failed to retrieve Anthropic key from Secrets Manager: {e}")
+            worker_logger.info(f"[WARNING] Failed to retrieve Anthropic key from Secrets Manager: {e}")
 
     raw_env = os.getenv("ANTHROPIC_API_KEY")
     if not raw_env:
@@ -82,7 +106,7 @@ def _get_anthropic_api_key() -> str:
         )
 
     key = _extract_key(raw_env)
-    print("[DEBUG] Using Anthropic API key from environment")
+    worker_logger.info("[DEBUG] Using Anthropic API key from environment")
     return key
 
 
@@ -152,7 +176,7 @@ def main():
 
     agent = ToolCallingAgent(max_steps=40)
 
-    print("Worker listening for tickets on SQS…")
+    worker_logger.info("Worker listening for tickets on SQS…")
     while True:
         msg = receive_ticket()
         if msg is None:
@@ -164,15 +188,15 @@ def main():
 
         try:
             task = parse_ticket(body)
-            print(f"Processing ticket: issue #{task.issue_number}")
+            worker_logger.info(f"Processing ticket: issue #{task.issue_number}")
 
             result = agent.run_issue_task(task)
-            print("Agent result:", result)
+            worker_logger.info("Agent result:", result)
 
             # Only delete on success
             delete_ticket(receipt)
         except Exception as e:
-            print(f"[ERROR] Failed to process message: {e}")
+            worker_logger.info(f"[ERROR] Failed to process message: {e}")
             traceback.print_exc()
             # Optionally: move to a DLQ or leave it to be retried
             time.sleep(2)

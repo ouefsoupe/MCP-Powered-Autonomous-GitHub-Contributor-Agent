@@ -11,6 +11,30 @@ from .mcp_client import MCPClient
 # Anthropic client (Claude)
 from anthropic import Anthropic
 
+import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+# ---------- Logging setup for agent orchestrator ----------
+
+ROOT = Path(__file__).resolve().parents[2]  # project root (MCP-Powered-...)
+LOG_DIR = ROOT / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+LOG_FILE = LOG_DIR / "agent-orchestrator.log"
+
+logger = logging.getLogger("agent_orchestrator")
+logger.setLevel(logging.INFO)
+
+if not logger.handlers:
+    handler = RotatingFileHandler(LOG_FILE, maxBytes=5_000_000, backupCount=3)
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+
 # Import the secrets helper - add parent directory to path
 _parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if _parent_dir not in sys.path:
@@ -71,14 +95,14 @@ class ToolCallingAgent:
         if api_key_arn:
             try:
                 api_key = get_secret(api_key_arn, from_aws=True)
-                print("[DEBUG] Retrieved Anthropic API key from Secrets Manager")
+                logger.info("[DEBUG] Retrieved Anthropic API key from Secrets Manager")
             except Exception as e:
-                print(f"[WARNING] Failed to retrieve Anthropic API key from Secrets Manager: {e}")
+                logger.info(f"[WARNING] Failed to retrieve Anthropic API key from Secrets Manager: {e}")
 
         if not api_key:
             api_key = os.getenv("ANTHROPIC_API_KEY")
             if api_key:
-                print("[DEBUG] Using Anthropic API key from ANTHROPIC_API_KEY env var")
+                logger.info("[DEBUG] Using Anthropic API key from ANTHROPIC_API_KEY env var")
 
         if not api_key:
             raise RuntimeError("ANTHROPIC_API_KEY not found in Secrets Manager or environment variables.")
@@ -411,9 +435,9 @@ class ToolCallingAgent:
         tool_results_for_anthro: Dict[str, Any] = {}
         
         # Debug: print the messages we're processing
-        print(f"DEBUG: Processing {len(messages)} messages:")
+        logger.debug(f"DEBUG: Processing {len(messages)} messages:")
         for i, msg in enumerate(messages):
-            print(f"  {i}: {msg.get('role')} - {str(msg.get('content', ''))[:100]}...")
+            logger.debug(f"  {i}: {msg.get('role')} - {str(msg.get('content', ''))[:100]}...")
 
         for msg in messages:
             role = msg["role"]
