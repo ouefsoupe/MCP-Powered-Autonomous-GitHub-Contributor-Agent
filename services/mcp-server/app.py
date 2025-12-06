@@ -21,7 +21,7 @@ DRY_RUN = os.getenv("DRY_RUN", "0") == "1"
 
 app = FastAPI(title="MCP Server", version="0.1.0")
 
-# ------------ Models -------------
+# Models
 class Health(BaseModel):
     status: str = "ok"
     message: str = "mcp-server alive"
@@ -83,7 +83,7 @@ class CreatePRResp(BaseModel):
     pr_number: int
     html_url: str
 
-# ------------ Helpers -------------
+# Helpers
 def _ensure_allowed_repo(url: str):
     if ALLOWED_REPOS and url not in ALLOWED_REPOS:
         raise HTTPException(status_code=403, detail="Repo not allowlisted " + url,)
@@ -107,7 +107,7 @@ def _github_client() -> GitHubClient:
     """Get a configured GitHub client."""
     return GitHubClient(_get_github_token())
 
-# ------------ Endpoints -------------
+# Endpoints
 @app.get("/health", response_model=Health)
 def health():
     return Health()

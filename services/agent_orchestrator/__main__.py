@@ -14,16 +14,6 @@ def main():
     with open(issue_file, "r", encoding="utf-8") as f:
         issue_payload = json.load(f)
 
-    # This assumes you've shaped issue_payload like:
-    # {
-    #   "repo_url": "...",
-    #   "base_branch": "main",
-    #   "issue_number": 12,
-    #   "title": "...",
-    #   "body": "...",
-    #   "labels": ["..."]
-    # }
-
     task = IssueTask(
         repo_url=issue_payload["repo_url"],
         base_branch=issue_payload.get("base_branch", "main"),

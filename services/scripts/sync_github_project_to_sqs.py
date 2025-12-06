@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-# Force project root (…/MCP-Powered-Autonomous-GitHub-Contributor-Agent) onto sys.path
+# Force project root onto sys.path
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 from adapters.secrets import get_secret
 
-# Load .env so we get SECRETS_MANAGER_GITHUB_PAT_ARN, SQS_TICKET_QUEUE_URL, AWS_REGION, etc.
+# Load .env for github arn
 load_dotenv(override=True)
 
 GITHUB_API = "https://api.github.com"
@@ -30,13 +30,9 @@ GITHUB_REPO = os.getenv("GITHUB_REPO", "javaLearning")
 # SQS ticket queue URL (required)
 SQS_TICKET_QUEUE_URL = os.environ["SQS_TICKET_QUEUE_URL"]
 
-# Label → normalized status
+# Label conver to normalized status
 STATUS_LABEL_MAP = {
     "help wanted": "todo",
-    "status: todo": "todo",
-    "status: in-progress": "in_progress",
-    "status: dev-complete": "dev_complete",
-    "status: done": "done",
 }
 
 
@@ -63,7 +59,7 @@ def _get_github_token() -> str:
         except json.JSONDecodeError:
             pass  # not JSON, fall through
 
-        # Not JSON or couldn't extract – treat raw as the token
+        # Not JSON or couldn't extract treat raw as the token
         return raw
 
     pat_arn = os.getenv("SECRETS_MANAGER_GITHUB_PAT_ARN")
@@ -122,12 +118,6 @@ def fetch_open_issues():
 
 
 def infer_status_from_labels(issue) -> str | None:
-    """
-    Look at an issue's labels and map them to a normalized status.
-    Returns:
-      - "todo", "in_progress", "dev_complete", "done", or
-      - None if no known status label is present.
-    """
     labels = [lbl["name"] for lbl in issue.get("labels", [])]
     for label in labels:
         normalized = STATUS_LABEL_MAP.get(label)

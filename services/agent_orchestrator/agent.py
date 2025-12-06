@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Optional
 from .mcp_client import MCPClient
 
 
-# ------------------ Task model ------------------
+# Task model 
 
 @dataclass
 class IssueTask:
@@ -18,7 +18,7 @@ class IssueTask:
     labels: List[str]
 
 
-# ------------------ LLM integration stubs ------------------
+# LLM integration stubs
 
 def call_llm_for_plan(
     task: IssueTask,
@@ -49,7 +49,7 @@ def call_llm_for_plan(
     raise NotImplementedError("Implement LLM call and planning here.")
 
 
-# ------------------ Agent orchestrator ------------------
+# Agent orchestrator
 
 class AgentOrchestrator:
     """

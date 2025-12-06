@@ -23,7 +23,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-# ---------- Logging setup for agent worker ----------
+# Logging setup for agent worker
 
 ROOT = Path(__file__).resolve().parents[2]
 LOG_DIR = ROOT / "logs"
@@ -43,9 +43,7 @@ if not worker_logger.handlers:
     worker_logger.addHandler(handler)
 
 
-# ----------------------------------------------------
 # Env + AWS clients
-# ----------------------------------------------------
 
 load_dotenv(override=True)
 
@@ -57,10 +55,8 @@ GITHUB_BASE_BRANCH = os.getenv("GITHUB_BASE_BRANCH", "main")
 
 sqs = boto3.client("sqs", region_name=AWS_REGION)
 
-# ----------------------------------------------------
-# Anthropic API key handling (JSON-aware)
-# ----------------------------------------------------
 
+# Anthropic API key handling
 
 def _get_anthropic_api_key() -> str:
     """
@@ -110,10 +106,7 @@ def _get_anthropic_api_key() -> str:
     return key
 
 
-# ----------------------------------------------------
 # SQS helpers
-# ----------------------------------------------------
-
 
 def receive_ticket():
     """Long-poll SQS for a single ticket message."""
@@ -140,18 +133,6 @@ def parse_ticket(msg_body: str) -> IssueTask:
     """
     payload = json.loads(msg_body)
 
-    # Expected shape:
-    # {
-    #   "source": "github",
-    #   "repo": "ouefsoupe/javaLearning",
-    #   "issue_number": 7,
-    #   "status": "todo",
-    #   "title": "...",
-    #   "body": "...",
-    #   "labels": [...],
-    #   "html_url": "https://github.com/..."
-    # }
-
     return IssueTask(
         repo_url=UPSTREAM_REPO_URL,
         base_branch=GITHUB_BASE_BRANCH,
@@ -162,10 +143,7 @@ def parse_ticket(msg_body: str) -> IssueTask:
     )
 
 
-# ----------------------------------------------------
 # Main worker loop
-# ----------------------------------------------------
-
 
 def main():
     # Make sure the underlying orchestrator sees a clean key value

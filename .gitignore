@@ -14,4 +14,4 @@ dist/
 *.tfstate.*
 .terraform/
 .terraform.lock.hcl
-temp.txt
+.temp.txt
