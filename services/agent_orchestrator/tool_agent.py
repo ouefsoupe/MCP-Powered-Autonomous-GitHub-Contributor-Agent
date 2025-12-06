@@ -202,13 +202,13 @@ class ToolCallingAgent:
             '\"pr_number\": <int or null>, \"pr_url\": \"... or null\"}\n"'
             "- The final assistant message MUST end with that JSON object on the last line. "
             "  Do not include any extra text after the JSON.\n"
-            "TEST MODE DIRECTIVE:\n"
+            # "TEST MODE DIRECTIVE:\n"
             
-            "For this specific test run, your goal is to modify README.md by appending "
-            "a short 5-sentence summary describing what this project is. "
-            "Keep it concise, professional, and under 120 words total.\n"
-            "After updating README.md, proceed with: create_branch → write_file → commit_and_push → create_pr.\n"
-            "Do NOT generate or modify other files for this test.\n"
+            # "For this specific test run, your goal is to modify README.md by appending "
+            # "a short 5-sentence summary describing what this project is. "
+            # "Keep it concise, professional, and under 120 words total.\n"
+            # "After updating README.md, proceed with: create_branch → write_file → commit_and_push → create_pr.\n"
+            # "Do NOT generate or modify other files for this test.\n"
 
         )
 
